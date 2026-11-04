@@ -2,21 +2,29 @@ from datetime import date, datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.domain.enums import AppointmentStatus, Role
 from app.models import Appointment, Doctor, Patient, Specialization, User, WorkingHours
 
 _counter = iter(range(1, 1_000_000))
 
 
-def make_user(session: Session, role: Role, email: str | None = None) -> User:
-    user = User(email=email or f"user{next(_counter)}@clinic.example", password_hash="x", role=role)
+# Pass a password only when the test needs to log in: bcrypt is slow on purpose
+def make_user(
+    session: Session, role: Role, email: str | None = None, password: str | None = None
+) -> User:
+    user = User(
+        email=email or f"user{next(_counter)}@clinic.example",
+        password_hash=hash_password(password) if password else "x",
+        role=role,
+    )
     session.add(user)
     session.flush()
     return user
 
 
 def make_patient(session: Session, **fields) -> Patient:
-    user = make_user(session, Role.PATIENT, fields.pop("email", None))
+    user = make_user(session, Role.PATIENT, fields.pop("email", None), fields.pop("password", None))
     patient = Patient(
         user=user,
         last_name=fields.pop("last_name", "Шевченко"),
@@ -34,7 +42,9 @@ def make_patient(session: Session, **fields) -> Patient:
 def make_doctor(session: Session, slot_minutes: int = 30, **fields) -> Doctor:
     spec = fields.pop("specialization", None) or Specialization(name=f"Spec {next(_counter)}")
     doctor = Doctor(
-        user=make_user(session, Role.DOCTOR),
+        user=make_user(
+            session, Role.DOCTOR, fields.pop("email", None), fields.pop("password", None)
+        ),
         specialization=spec,
         last_name=fields.pop("last_name", "Коваленко"),
         first_name=fields.pop("first_name", "Андрій"),
