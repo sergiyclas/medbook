@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
     clinic_timezone: str = "Europe/Kyiv"
 
+    # Must be overridden outside local demo use
+    jwt_secret: str = "dev-only-secret-change-me-before-deploying"
+    jwt_algorithm: str = "HS256"
+    access_token_minutes: int = 8 * 60
+
 
 # GoF Singleton: one Settings instance per process with a single global access point.
 # Enforced by convention (always go through get_settings), which keeps it replaceable
