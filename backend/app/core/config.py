@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=("../.env", ".env"), extra="ignore")
 
     app_name: str = "MedBook"
-    database_url: str = "postgresql+psycopg://medbook:medbook@localhost:5432/medbook"
+    database_url: str = "postgresql+psycopg://medbook:medbook@localhost:5433/medbook"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:8080"]
+    clinic_timezone: str = "Europe/Kyiv"
 
 
 # GoF Singleton: one Settings instance per process with a single global access point.
