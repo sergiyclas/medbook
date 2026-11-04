@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, String, Text, text
@@ -9,7 +9,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.clock import utc_now
 from app.db.base import Base
 from app.db.types import UTCDateTime, str_enum
+from app.domain.appointment_state import STATES, AppointmentState, TransitionContext
 from app.domain.enums import AppointmentStatus
+from app.domain.events import (
+    AppointmentBooked,
+    AppointmentRescheduled,
+    AppointmentStatusChanged,
+    DomainEvent,
+)
 
 if TYPE_CHECKING:
     from app.models.doctor import Doctor
@@ -58,6 +65,69 @@ class Appointment(Base):
         back_populates="appointment", cascade="all, delete-orphan"
     )
 
+    # GRASP Creator: the appointment knows how to come into existence correctly
+    @classmethod
+    def book(
+        cls,
+        patient: Patient,
+        doctor: Doctor,
+        starts_at: datetime,
+        reason: str | None,
+        actor: User,
+        now: datetime,
+    ) -> Appointment:
+        appt = cls(
+            patient=patient,
+            doctor=doctor,
+            starts_at=starts_at,
+            ends_at=starts_at + timedelta(minutes=doctor.slot_minutes),
+            status=AppointmentStatus.SCHEDULED,
+            reason=reason,
+            created_at=now,
+        )
+        appt.record(AppointmentBooked(appt, actor.id, now))
+        return appt
+
+    # ---------- GoF State: Context side ----------
+    @property
+    def state(self) -> AppointmentState:
+        return STATES[self.status]
+
+    def confirm(self, ctx: TransitionContext) -> None:
+        self.state.confirm(self, ctx)
+
+    def cancel(self, ctx: TransitionContext, reason: str | None = None) -> None:
+        self.state.cancel(self, ctx, reason)
+
+    def complete(self, ctx: TransitionContext, notes: str | None = None) -> None:
+        self.state.complete(self, ctx, notes)
+
+    def mark_no_show(self, ctx: TransitionContext) -> None:
+        self.state.mark_no_show(self, ctx)
+
+    def reschedule(self, ctx: TransitionContext, starts_at: datetime) -> None:
+        ends_at = starts_at + timedelta(minutes=self.doctor.slot_minutes)
+        self.state.reschedule(self, ctx, starts_at, ends_at)
+
+    # Called by state objects only – they have already validated the transition
+    def transition_to(
+        self, new: AppointmentStatus, ctx: TransitionContext, reason: str | None
+    ) -> None:
+        old, self.status = self.status, new
+        self.record(AppointmentStatusChanged(self, old, new, ctx.actor.id, reason, ctx.now))
+
+    def move_to(self, starts_at: datetime, ends_at: datetime, ctx: TransitionContext) -> None:
+        old_status, old_start = self.status, self.starts_at
+        self.starts_at, self.ends_at, self.status = starts_at, ends_at, AppointmentStatus.SCHEDULED
+        self.record(AppointmentRescheduled(self, old_status, old_start, ctx.actor.id, ctx.now))
+
+    # ---------- domain events (not persisted) ----------
+    def record(self, event: DomainEvent) -> None:
+        self.__dict__.setdefault("_pending_events", []).append(event)
+
+    def pull_events(self) -> list[DomainEvent]:
+        return self.__dict__.pop("_pending_events", [])
+
 
 class AppointmentStatusChange(Base):
     __tablename__ = "appointment_status_changes"
@@ -74,3 +144,7 @@ class AppointmentStatusChange(Base):
 
     appointment: Mapped[Appointment] = relationship(back_populates="history")
     changed_by: Mapped[User | None] = relationship()
+
+    @property
+    def changed_by_email(self) -> str | None:
+        return self.changed_by.email if self.changed_by else None
