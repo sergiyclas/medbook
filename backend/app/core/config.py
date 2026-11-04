@@ -4,7 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # The shared .env lives in the repo root; a backend/.env, if present, overrides it.
+    model_config = SettingsConfigDict(env_file=("../.env", ".env"), extra="ignore")
 
     app_name: str = "MedBook"
     database_url: str = "postgresql+psycopg://medbook:medbook@localhost:5432/medbook"
