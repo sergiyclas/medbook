@@ -9,7 +9,7 @@ _counter = iter(range(1, 1_000_000))
 
 
 def make_user(session: Session, role: Role, email: str | None = None) -> User:
-    user = User(email=email or f"user{next(_counter)}@test.local", password_hash="x", role=role)
+    user = User(email=email or f"user{next(_counter)}@clinic.example", password_hash="x", role=role)
     session.add(user)
     session.flush()
     return user

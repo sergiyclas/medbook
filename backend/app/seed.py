@@ -116,7 +116,7 @@ def _create_doctors(
     doctors = []
     for i, spec_index in enumerate(DOCTOR_SPECS):
         last, first, middle = _names(fake, rnd)
-        email = "doctor@medbook.local" if i == 0 else f"doctor{i + 1:02d}@medbook.local"
+        email = "doctor@medbook.example" if i == 0 else f"doctor{i + 1:02d}@medbook.example"
         schedule = (
             SCHEDULES["full"] if i == 0 else SCHEDULES[rnd.choice(["morning", "evening", "full"])]
         )
@@ -309,14 +309,17 @@ def seed(session: Session, force: bool = False) -> bool:
     now, today = utc_now(), local_today()
 
     session.add(ClinicSettings(id=1))
-    session.add(_user("admin@medbook.local", DEMO_PASSWORDS["admin"], Role.ADMIN, now))
+    session.add(_user("admin@medbook.example", DEMO_PASSWORDS["admin"], Role.ADMIN, now))
     doctors = _create_doctors(session, fake, rnd, now)
     _add_days_off(doctors, rnd, today)
 
     patients = _create_patients(fake, rnd, now)
     demo = Patient(
         user=_user(
-            "patient@medbook.local", DEMO_PASSWORDS["patient"], Role.PATIENT, patients[5].created_at
+            "patient@medbook.example",
+            DEMO_PASSWORDS["patient"],
+            Role.PATIENT,
+            patients[5].created_at,
         ),
         last_name="Мельник",
         first_name="Ірина",
@@ -345,7 +348,8 @@ def main() -> None:
         }
         print("Seeded:", ", ".join(f"{k}={v}" for k, v in counts.items()))
         print(
-            "Demo logins:", ", ".join(f"{r}@medbook.local / {p}" for r, p in DEMO_PASSWORDS.items())
+            "Demo logins:",
+            ", ".join(f"{r}@medbook.example / {p}" for r, p in DEMO_PASSWORDS.items()),
         )
 
 
