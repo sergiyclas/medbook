@@ -50,3 +50,7 @@ class Doctor(Base):
     @property
     def full_name(self) -> str:
         return " ".join(p for p in (self.last_name, self.first_name, self.middle_name) if p)
+
+    @property
+    def email(self) -> str:
+        return self.user.email
