@@ -1,11 +1,17 @@
+from datetime import date
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, status
 
-from app.api.deps import SessionDep, require_role
-from app.domain.enums import Role
+from app.api.deps import AdminUser, Booking, SessionDep, require_role
+from app.domain.enums import AppointmentStatus, Role
+from app.repositories.appointments import AppointmentRepository
 from app.repositories.doctors import DoctorRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.settings import ClinicSettingsRepository
+from app.schemas.appointments import AppointmentOut
 from app.schemas.doctors import (
+    DayOffCreated,
     DayOffIn,
     DayOffOut,
     DoctorAdminOut,
@@ -19,6 +25,7 @@ from app.schemas.patients import PatientOut, PatientRegister, PatientUpdate
 from app.schemas.settings import ClinicSettingsOut, ClinicSettingsUpdate
 from app.services.accounts import AccountService
 from app.services.admin_service import AdminService
+from app.services.availability import AvailabilityCalendar
 
 router = APIRouter(
     prefix="/admin", tags=["admin"], dependencies=[Depends(require_role(Role.ADMIN))]
@@ -72,14 +79,38 @@ def list_days_off(doctor_id: int, session: SessionDep):
     return AdminService(session).doctor(doctor_id).days_off
 
 
-@router.post("/doctors/{doctor_id}/days-off", response_model=DayOffOut, status_code=201)
-def add_day_off(doctor_id: int, data: DayOffIn, session: SessionDep):
-    return AdminService(session).add_day_off(doctor_id, data)
+@router.post("/doctors/{doctor_id}/days-off", response_model=DayOffCreated, status_code=201)
+def add_day_off(
+    doctor_id: int, data: DayOffIn, admin: AdminUser, session: SessionDep, booking: Booking
+):
+    day_off, cancelled = AdminService(session).add_day_off(admin, doctor_id, data, booking)
+    return DayOffCreated(
+        **DayOffOut.model_validate(day_off).model_dump(), cancelled_appointments=len(cancelled)
+    )
 
 
 @router.delete("/days-off/{day_off_id}", status_code=status.HTTP_204_NO_CONTENT)
 def remove_day_off(day_off_id: int, session: SessionDep) -> None:
     AdminService(session).remove_day_off(day_off_id)
+
+
+# ---------- appointments ----------
+@router.get("/appointments", response_model=list[AppointmentOut])
+def list_appointments(
+    session: SessionDep,
+    doctor_id: int | None = None,
+    patient_id: int | None = None,
+    status_filter: Annotated[AppointmentStatus | None, Query(alias="status")] = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    start = AvailabilityCalendar.day_bounds(date_from)[0] if date_from else None
+    end = AvailabilityCalendar.day_bounds(date_to)[1] if date_to else None
+    return AppointmentRepository(session).search(
+        doctor_id, patient_id, status_filter, start, end, limit=limit, offset=offset
+    )
 
 
 # ---------- patients ----------

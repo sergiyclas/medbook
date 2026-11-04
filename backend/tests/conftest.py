@@ -36,7 +36,7 @@ def engine() -> Iterator[Engine]:
 
 @pytest.fixture
 def session(engine: Engine) -> Iterator[Session]:
-    with Session(engine, expire_on_commit=False) as s:
+    with Session(engine, autoflush=False, expire_on_commit=False) as s:
         yield s
 
 

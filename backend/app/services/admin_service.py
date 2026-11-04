@@ -3,7 +3,16 @@ from sqlalchemy.orm import Session
 from app.core.security import hash_password
 from app.domain.enums import Role
 from app.domain.errors import Conflict, NotFound
-from app.models import ClinicSettings, DayOff, Doctor, Patient, Specialization, User, WorkingHours
+from app.models import (
+    Appointment,
+    ClinicSettings,
+    DayOff,
+    Doctor,
+    Patient,
+    Specialization,
+    User,
+    WorkingHours,
+)
 from app.repositories.doctors import DayOffRepository, DoctorRepository, SpecializationRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.settings import ClinicSettingsRepository
@@ -18,6 +27,7 @@ from app.schemas.doctors import (
 )
 from app.schemas.patients import PatientUpdate
 from app.schemas.settings import ClinicSettingsUpdate
+from app.services.booking_facade import BookingFacade
 
 
 def _apply(entity: object, changes: dict) -> None:
@@ -102,13 +112,18 @@ class AdminService:
         self.session.commit()
         return doctor
 
-    def add_day_off(self, doctor_id: int, data: DayOffIn) -> DayOff:
+    # Visits already booked on that day are cancelled through BookingFacade in
+    # the same transaction, so patients are notified like for any cancellation.
+    def add_day_off(
+        self, actor: User, doctor_id: int, data: DayOffIn, booking: BookingFacade
+    ) -> tuple[DayOff, list[Appointment]]:
         doctor = self.doctor(doctor_id)
         if any(d.day == data.day for d in doctor.days_off):
             raise Conflict("Цей день уже позначено як вихідний")
         day_off = self.days_off.add(DayOff(doctor=doctor, **data.model_dump()))
-        self.session.commit()
-        return day_off
+        reason = "Лікар не працює в цей день" + (f": {data.reason}" if data.reason else "")
+        cancelled = booking.cancel_doctor_day(actor, doctor, data.day, reason)
+        return day_off, cancelled
 
     def remove_day_off(self, day_off_id: int) -> None:
         day_off = self.days_off.get(day_off_id)

@@ -105,3 +105,7 @@ class DayOffOut(DayOffIn):
 
     id: int
     doctor_id: int
+
+
+class DayOffCreated(DayOffOut):
+    cancelled_appointments: int

@@ -5,10 +5,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.bootstrap import build_bus
 from app.core.security import decode_access_token
 from app.db.session import get_session
 from app.domain.enums import Role
 from app.models import Doctor, Patient, User
+from app.services.booking_facade import BookingFacade
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -54,3 +56,10 @@ def current_doctor(user: Annotated[User, Depends(require_role(Role.DOCTOR))]) ->
 CurrentPatient = Annotated[Patient, Depends(current_patient)]
 CurrentDoctor = Annotated[Doctor, Depends(current_doctor)]
 AdminUser = Annotated[User, Depends(require_role(Role.ADMIN))]
+
+
+def get_booking(session: SessionDep) -> BookingFacade:
+    return BookingFacade(session, build_bus(session))
+
+
+Booking = Annotated[BookingFacade, Depends(get_booking)]
