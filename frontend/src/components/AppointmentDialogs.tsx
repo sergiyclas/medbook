@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api/client'
 import type { Appointment, Doctor, Slot, StatusChange } from '../api/types'
-import { STATUS } from '../lib/labels'
+import { ROLE, STATUS } from '../lib/labels'
 import { fmtDateTime, localDay } from '../lib/time'
 import { useAction, useResource } from '../lib/useResource'
 import { DayStrip, SlotGrid } from './SlotPicker'
@@ -124,8 +124,10 @@ export function HistoryDialog({ appointment, onClose }: Omit<DialogProps, 'onDon
                 {STATUS[change.to_status]}
               </b>
               {change.reason && <span className="cell-sub">{change.reason}</span>}
-              {change.changed_by_email && (
-                <span className="cell-sub">ким: {change.changed_by_email}</span>
+              {change.changed_by_role && (
+                <span className="cell-sub">
+                  ким: {change.changed_by_email ?? ROLE[change.changed_by_role]}
+                </span>
               )}
             </span>
           </li>

@@ -3,7 +3,14 @@ import type {
   NotificationChannel,
   NotificationKind,
   NotificationStatus,
+  Role,
 } from '../api/types'
+
+export const ROLE: Record<Role, string> = {
+  patient: 'пацієнт',
+  doctor: 'лікар',
+  admin: 'реєстратура',
+}
 
 export const STATUS: Record<AppointmentStatus, string> = {
   scheduled: 'Заплановано',

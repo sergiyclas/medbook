@@ -92,6 +92,7 @@ export interface StatusChange {
   to_status: AppointmentStatus
   reason: string | null
   changed_at: string
+  changed_by_role: Role | null
   changed_by_email: string | null
 }
 

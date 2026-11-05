@@ -1,5 +1,7 @@
 const BASE = '/api/v1'
 const TOKEN_KEY = 'medbook.token'
+// Fired when the server rejects the saved token (expired or revoked)
+export const SESSION_EXPIRED = 'medbook:session-expired'
 
 export class ApiError extends Error {
   status: number
@@ -78,6 +80,10 @@ export async function api<T>(
   const data = await response.json().catch(() => null)
   if (!response.ok) {
     const [message, code] = messageOf(data, response.status)
+    if (response.status === 401 && token) {
+      setToken(null)
+      window.dispatchEvent(new Event(SESSION_EXPIRED))
+    }
     throw new ApiError(response.status, message, code)
   }
   return data as T
