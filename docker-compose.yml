@@ -52,5 +52,14 @@ services:
     ports:
       - "8080:80"
 
+  # Database browser for screenshots and debugging: docker compose --profile tools up
+  adminer:
+    image: adminer:4.8.1
+    profiles: [tools]
+    depends_on:
+      - db
+    ports:
+      - "8081:8080"
+
 volumes:
   pgdata:
