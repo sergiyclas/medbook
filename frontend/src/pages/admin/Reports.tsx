@@ -41,8 +41,9 @@ const PLOTTED: Record<string, string[]> = {
   'new-patients': ['new'],
 }
 
+// Large values lose the decimal so a KPI tile stays on one line
 const fmtNumber = (value: number, unit = '') =>
-  `${value.toLocaleString('uk-UA', { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ''}`
+  `${value.toLocaleString('uk-UA', { maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 1 })}${unit ? ` ${unit}` : ''}`
 
 export function Reports() {
   const reports = useResource(() => api<ReportInfo[]>('/admin/reports'), [])
