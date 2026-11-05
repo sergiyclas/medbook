@@ -1,0 +1,32 @@
+/* Palette taken from the clinic itself: cool form paper, surgical-scrub green,
+   and the violet ink of a registry rubber stamp. */
+:root {
+  color-scheme: light;
+
+  --paper: #eef2ef;
+  --card: #ffffff;
+  --ink: #14211d;
+  --muted: #5a6a64;
+  --line: #d3dcd7;
+  --line-strong: #b9c6c0;
+
+  --scrub: #2f6f62;
+  --scrub-deep: #1f4f45;
+  --scrub-tint: #dceae5;
+  --stamp: #5b3fa6;
+  --stamp-tint: #ece7f7;
+  --danger: #b42318;
+  --danger-tint: #fbe9e7;
+  --amber: #9a5a06;
+  --amber-tint: #fcf0dc;
+
+  --font-display: 'Unbounded', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 2px rgb(20 33 29 / 6%), 0 8px 24px -12px rgb(20 33 29 / 18%);
+  --gutter: clamp(16px, 4vw, 40px);
+  --content: 1180px;
+}
