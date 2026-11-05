@@ -128,6 +128,12 @@ class Appointment(Base):
     def pull_events(self) -> list[DomainEvent]:
         return self.__dict__.pop("_pending_events", [])
 
+    @property
+    def cancellation_reason(self) -> str | None:
+        if self.status != AppointmentStatus.CANCELLED:
+            return None
+        return next((h.reason for h in reversed(self.history) if h.to_status == self.status), None)
+
 
 class AppointmentStatusChange(Base):
     __tablename__ = "appointment_status_changes"
