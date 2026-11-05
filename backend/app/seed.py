@@ -292,8 +292,11 @@ def _create_appointments(
                 if (id(patient), day) in busy or patient.created_at > start:
                     continue
                 busy.add((id(patient), day))
-                if start + step <= now:
+                if start + step <= now and day < today:
                     status = rnd.choices([S.COMPLETED, S.CANCELLED, S.NO_SHOW], [85, 10, 5])[0]
+                elif start <= now:
+                    # earlier today: the doctor has not closed these visits yet
+                    status = rnd.choices([S.CONFIRMED, S.SCHEDULED], [70, 30])[0]
                 else:
                     status = rnd.choices([S.SCHEDULED, S.CONFIRMED, S.CANCELLED], [62, 30, 8])[0]
                 booked = start - timedelta(days=rnd.randint(1, 14), hours=rnd.randint(0, 23))
