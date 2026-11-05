@@ -49,6 +49,16 @@ class BookingFacade:
         step = timedelta(minutes=doctor.slot_minutes)
         return [(s, s + step) for s in self.calendar.free_slots(doctor, day, self.clock())]
 
+    # Nearest free time per active doctor, within the online booking horizon
+    def next_free_slots(self, specialization_id: int | None) -> list[tuple[Doctor, datetime]]:
+        now, horizon = self.clock(), self.settings.current().booking_horizon_days
+        found = []
+        for doctor in self.doctors.find(specialization_id=specialization_id):
+            slot = self.calendar.next_free(doctor, now, horizon)
+            if slot is not None:
+                found.append((doctor, slot))
+        return sorted(found, key=lambda pair: pair[1])
+
     def appointment_for(self, actor: User, appointment_id: int) -> Appointment:
         appt = self.appointments.get(appointment_id)
         if appt is None or not self._can_see(actor, appt):

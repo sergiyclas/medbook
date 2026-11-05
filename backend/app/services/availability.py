@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timedelta
 
-from app.core.clock import local_to_utc
+from app.core.clock import local_to_utc, to_local
 from app.domain.availability import slot_starts
 from app.models import Doctor
 from app.repositories.appointments import AppointmentRepository
@@ -39,3 +39,15 @@ class AvailabilityCalendar:
         start, end = self.day_bounds(day)
         busy = self.appointments.doctor_busy_starts(doctor.id, start, end, exclude_id)
         return [s for s in self.grid(doctor, day) if s > now and s not in busy]
+
+    # First free slot within the next `days` days – one query for the whole range
+    def next_free(self, doctor: Doctor, now: datetime, days: int) -> datetime | None:
+        first = to_local(now).date()
+        start, _ = self.day_bounds(first)
+        _, end = self.day_bounds(first + timedelta(days=days - 1))
+        busy = self.appointments.doctor_busy_starts(doctor.id, start, end)
+        for offset in range(days):
+            for slot in self.grid(doctor, first + timedelta(days=offset)):
+                if slot > now and slot not in busy:
+                    return slot
+        return None

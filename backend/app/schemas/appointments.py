@@ -11,6 +11,11 @@ class SlotOut(BaseModel):
     ends_at: datetime
 
 
+class NextSlotOut(BaseModel):
+    doctor_id: int
+    starts_at: datetime
+
+
 class AppointmentCreate(BaseModel):
     doctor_id: int
     starts_at: AwareDatetime

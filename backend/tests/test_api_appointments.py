@@ -167,3 +167,14 @@ def test_admin_sees_notification_log_and_retries_failed(
     retried = client.post(f"/api/v1/admin/notifications/{pending_id}/retry", headers=admin_headers)
     assert retried.json()["status"] == "pending"
     assert retried.json()["attempts"] == 0
+
+
+def test_next_free_slot_per_doctor_skips_taken_time(client: TestClient, people) -> None:
+    before = client.get("/api/v1/doctors/next-free").json()
+    assert {s["doctor_id"] for s in before} == {people["doctor"].id, people["other_doctor"].id}
+    first = next(s for s in before if s["doctor_id"] == people["doctor"].id)["starts_at"]
+
+    assert book(client, people["anna"], people["doctor"].id, first).status_code == 201
+    after = client.get("/api/v1/doctors/next-free").json()
+    assert next(s for s in after if s["doctor_id"] == people["doctor"].id)["starts_at"] > first
+    assert [s["starts_at"] for s in after] == sorted(s["starts_at"] for s in after)
