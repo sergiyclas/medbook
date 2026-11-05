@@ -22,10 +22,12 @@ class AvailabilityCalendar:
             (h.start_time, h.end_time) for h in doctor.working_hours if h.weekday == day.weekday()
         ]
 
-    def grid(self, doctor: Doctor, day: date) -> list[datetime]:
-        if self.is_day_off(doctor, day):
+    # Needs no stored appointments, so the doctor-load report uses it for capacity
+    @classmethod
+    def grid(cls, doctor: Doctor, day: date) -> list[datetime]:
+        if cls.is_day_off(doctor, day):
             return []
-        return slot_starts(self.intervals(doctor, day), day, doctor.slot_minutes)
+        return slot_starts(cls.intervals(doctor, day), day, doctor.slot_minutes)
 
     @staticmethod
     def day_bounds(day: date) -> tuple[datetime, datetime]:
