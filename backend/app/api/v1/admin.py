@@ -4,9 +4,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import AdminUser, Booking, SessionDep, require_role
-from app.domain.enums import AppointmentStatus, Role
+from app.domain.enums import AppointmentStatus, NotificationChannel, NotificationStatus, Role
 from app.repositories.appointments import AppointmentRepository
 from app.repositories.doctors import DoctorRepository
+from app.repositories.notifications import NotificationRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.settings import ClinicSettingsRepository
 from app.schemas.appointments import AppointmentOut
@@ -21,6 +22,7 @@ from app.schemas.doctors import (
     SpecializationOut,
     WeeklySchedule,
 )
+from app.schemas.notifications import NotificationOut
 from app.schemas.patients import PatientOut, PatientRegister, PatientUpdate
 from app.schemas.settings import ClinicSettingsOut, ClinicSettingsUpdate
 from app.services.accounts import AccountService
@@ -137,6 +139,23 @@ def get_patient(patient_id: int, session: SessionDep):
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
 def update_patient(patient_id: int, data: PatientUpdate, session: SessionDep):
     return AdminService(session).update_patient(patient_id, data)
+
+
+# ---------- notifications ----------
+@router.get("/notifications", response_model=list[NotificationOut])
+def list_notifications(
+    session: SessionDep,
+    status_filter: Annotated[NotificationStatus | None, Query(alias="status")] = None,
+    channel: NotificationChannel | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    return NotificationRepository(session).search(status_filter, channel, limit, offset)
+
+
+@router.post("/notifications/{notification_id}/retry", response_model=NotificationOut)
+def retry_notification(notification_id: int, session: SessionDep):
+    return AdminService(session).retry_notification(notification_id)
 
 
 # ---------- clinic settings ----------

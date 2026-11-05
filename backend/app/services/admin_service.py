@@ -1,19 +1,22 @@
 from sqlalchemy.orm import Session
 
+from app.core.clock import utc_now
 from app.core.security import hash_password
-from app.domain.enums import Role
+from app.domain.enums import NotificationStatus, Role
 from app.domain.errors import Conflict, NotFound
 from app.models import (
     Appointment,
     ClinicSettings,
     DayOff,
     Doctor,
+    Notification,
     Patient,
     Specialization,
     User,
     WorkingHours,
 )
 from app.repositories.doctors import DayOffRepository, DoctorRepository, SpecializationRepository
+from app.repositories.notifications import NotificationRepository
 from app.repositories.patients import PatientRepository
 from app.repositories.settings import ClinicSettingsRepository
 from app.repositories.users import UserRepository
@@ -48,6 +51,7 @@ class AdminService:
         self.days_off = DayOffRepository(session)
         self.patients = PatientRepository(session)
         self.settings = ClinicSettingsRepository(session)
+        self.notifications = NotificationRepository(session)
 
     # ---------- specializations ----------
     def create_specialization(self, data: SpecializationIn) -> Specialization:
@@ -150,6 +154,20 @@ class AdminService:
         if patient is None:
             raise NotFound("Пацієнта не знайдено")
         return patient
+
+    # ---------- notifications ----------
+    # Gives a failed message a fresh set of attempts, e.g. after fixing SMTP settings
+    def retry_notification(self, notification_id: int) -> Notification:
+        notification = self.notifications.get(notification_id)
+        if notification is None:
+            raise NotFound("Повідомлення не знайдено")
+        if notification.status != NotificationStatus.FAILED:
+            raise Conflict("Повторно надіслати можна лише повідомлення зі статусом «помилка»")
+        notification.status = NotificationStatus.PENDING
+        notification.send_at = utc_now()
+        notification.attempts = 0
+        self.session.commit()
+        return notification
 
     # ---------- clinic settings ----------
     def update_settings(self, data: ClinicSettingsUpdate) -> ClinicSettings:

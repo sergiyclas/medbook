@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.clock import local_to_utc, local_today
+from app.domain.enums import NotificationStatus
+from app.models import Notification
 from tests.conftest import login
 from tests.factories import make_doctor, make_patient
 
@@ -145,3 +147,23 @@ def test_day_off_over_bookings_cancels_them(client: TestClient, people, admin_he
     assert visit["status"] == "cancelled"
     slots = client.get(f"/api/v1/doctors/{people['doctor'].id}/slots?day={DAY}").json()
     assert slots == []
+
+
+def test_admin_sees_notification_log_and_retries_failed(
+    client: TestClient, session: Session, people, admin_headers
+) -> None:
+    appt_id = book(client, people["anna"], people["doctor"].id).json()["id"]
+    log = client.get("/api/v1/admin/notifications", headers=admin_headers).json()
+    assert {n["kind"] for n in log} == {"confirmation", "reminder"}
+    assert all(n["appointment"]["id"] == appt_id for n in log)
+
+    pending_id = log[0]["id"]
+    refused = client.post(f"/api/v1/admin/notifications/{pending_id}/retry", headers=admin_headers)
+    assert refused.status_code == 409
+
+    failed = session.get(Notification, pending_id)
+    failed.status, failed.attempts = NotificationStatus.FAILED, 5
+    session.commit()
+    retried = client.post(f"/api/v1/admin/notifications/{pending_id}/retry", headers=admin_headers)
+    assert retried.json()["status"] == "pending"
+    assert retried.json()["attempts"] == 0
