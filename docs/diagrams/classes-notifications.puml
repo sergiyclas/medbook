@@ -1,0 +1,12 @@
+@startuml classes-notifications
+' Reminders: Singleton + Abstract Factory + Builder + Adapter + Decorator.
+!include style.iuml
+skinparam linetype polyline
+left to right direction
+!include model.iuml
+remove *
+restore $notify
+remove ReminderScheduler
+remove NotificationRepository
+!include legend.iuml
+@enduml

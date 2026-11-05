@@ -1,0 +1,40 @@
+@startuml appointment-states
+' Appointment lifecycle implemented by the GoF State pattern
+' (app/domain/appointment_state.py).
+!include style.iuml
+skinparam linetype polyline
+skinparam state {
+  BackgroundColor $C_STATE
+  BorderColor #455A64
+}
+
+[*] --> Scheduled : book()\nпацієнт або адміністратор
+
+state "Заплановано\n(ScheduledState)" as Scheduled
+state "Підтверджено\n(ConfirmedState)" as Confirmed
+state "Завершено\n(CompletedState)" as Completed
+state "Скасовано\n(CancelledState)" as Cancelled
+state "Неявка\n(NoShowState)" as NoShow
+
+Scheduled --> Confirmed : confirm()\n[лікар або адміністратор]
+Scheduled --> Scheduled : reschedule()
+Confirmed --> Scheduled : reschedule()\nпотрібне нове підтвердження
+Scheduled --> Cancelled : cancel()\n[пацієнт – до дедлайну;\nадмін – будь-коли]
+Confirmed --> Cancelled : cancel()
+Scheduled --> Completed : complete(notes)\n[після початку прийому]
+Confirmed --> Completed : complete(notes)
+Scheduled --> NoShow : mark_no_show()\n[після початку прийому]
+Confirmed --> NoShow : mark_no_show()
+
+Completed --> [*]
+Cancelled --> [*]
+NoShow --> [*]
+
+note right of Cancelled
+  Будь-яка дія з кінцевого стану →
+  InvalidTransition (HTTP 409).
+  Кожен перехід породжує подію:
+  історія, скасування нагадувань,
+  лист про скасування (Observer).
+end note
+@enduml

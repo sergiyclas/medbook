@@ -1,0 +1,41 @@
+@startuml deployment
+' Runtime architecture: four Docker Compose services plus external providers.
+!include style.iuml
+skinparam linetype polyline
+
+actor "Браузер\n(пацієнт, лікар,\nадміністратор)" as Browser
+
+node "Docker Compose" {
+  node "frontend\n(nginx:1.27)" as Front {
+    artifact "React SPA\n(Vite build)" as Spa
+  }
+  node "backend\n(python:3.13)" as Back {
+    component "FastAPI\nREST /api/v1" as Api
+    component "Services\n(Facade, CoR, Observer)" as Svc
+    component "Domain\n(State, entities)" as Dom
+    component "Reports\n(Template Method,\nStrategy)" as Rep
+  }
+  node "worker\n(той самий образ)" as Work {
+    component "NotificationDispatcher\n(outbox relay)" as Disp
+    component "Transports\n(Abstract Factory,\nAdapter, Decorator)" as Tr
+    component "Messages\n(Builder)" as Msg
+  }
+  database "db\n(PostgreSQL 16)" as Db
+}
+
+cloud "Gmail SMTP" as Gmail
+cloud "Twilio SMS API" as Twilio
+
+Browser --> Front : HTTP :8080
+Spa ..> Api : fetch /api/v1 (JSON, JWT)
+Front --> Back : proxy /api → :8000
+Api --> Svc
+Svc --> Dom
+Api --> Rep
+Back --> Db : SQL
+Disp --> Db : claim / mark\n(FOR UPDATE SKIP LOCKED)
+Disp --> Msg
+Disp --> Tr
+Tr --> Gmail : SMTP 587\nSTARTTLS
+Tr --> Twilio : HTTPS
+@enduml

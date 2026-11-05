@@ -1,0 +1,14 @@
+@startuml classes-booking
+' Booking core: Facade + Chain of Responsibility + State + Observer.
+!include style.iuml
+skinparam linetype polyline
+left to right direction
+!include model.iuml
+remove *
+restore $booking
+remove $notify
+restore Notification
+restore ReminderScheduler
+restore NotificationRepository
+!include legend.iuml
+@enduml

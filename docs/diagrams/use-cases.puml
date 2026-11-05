@@ -1,0 +1,54 @@
+@startuml use-cases
+' Use cases of patients and visitors, plus the reminder subsystem.
+' Staff use cases are in use-cases-staff.puml.
+!include style.iuml
+skinparam linetype polyline
+left to right direction
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #455A64
+}
+
+actor "Гість" as Guest
+actor "Пацієнт" as Patient
+Guest <|-- Patient
+
+rectangle "MedBook – сайт і кабінет пацієнта" {
+  usecase "Переглянути лікарів\nза спеціалізаціями" as UC_Browse
+  usecase "Переглянути вільний\nчас лікаря" as UC_Slots
+  usecase "Зареєструватися" as UC_Register
+  usecase "Увійти в систему" as UC_Login
+  usecase "Записатися на прийом" as UC_Book
+  usecase "Обрати вільний слот" as UC_Pick
+  usecase "Переглянути свої записи,\nвисновки та історію" as UC_My
+  usecase "Перенести запис" as UC_Reschedule
+  usecase "Скасувати запис" as UC_Cancel
+  usecase "Налаштувати канали\nнагадувань" as UC_Prefs
+  usecase "Надіслати підтвердження,\nнагадування, скасування" as UC_Notify
+}
+
+actor "Фоновий процес\nнагадувань" as Worker <<система>>
+actor "Поштовий сервер\n(SMTP)" as Smtp <<зовнішня система>>
+actor "SMS-шлюз\n(Twilio)" as Sms <<зовнішня система>>
+
+Guest --> UC_Browse
+Guest --> UC_Slots
+Guest --> UC_Register
+Guest --> UC_Login
+Patient --> UC_Book
+Patient --> UC_My
+Patient --> UC_Reschedule
+Patient --> UC_Cancel
+Patient --> UC_Prefs
+
+UC_Book ..> UC_Pick : <<include>>
+UC_Reschedule ..> UC_Pick : <<include>>
+UC_Pick ..> UC_Slots : <<include>>
+UC_Book ..> UC_Notify : <<include>>
+UC_Cancel ..> UC_Notify : <<include>>
+
+UC_Notify <-- Worker
+UC_Notify --> Smtp
+UC_Notify --> Sms
+@enduml

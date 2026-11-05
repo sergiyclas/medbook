@@ -1,0 +1,418 @@
+' Single source of truth for all class diagrams. Every class carries tags:
+'   $domain  entities and the appointment lifecycle
+'   $booking booking use cases: facade, rules, events
+'   $notify  notifications and the worker
+'   $reports reports
+' A diagram includes this file and keeps only the tags it needs
+' (remove * / restore $tag). Colours mark the GoF pattern a class takes part in.
+
+' ================= configuration =================
+class Settings <<Singleton>> $notify $C_SINGLETON {
+  +database_url: str
+  +clinic_timezone: str
+  +notification_mode: console | live
+  +smtp_*, twilio_*: str
+  --
+  +{static} get_settings(): Settings
+}
+note right of Settings : get_settings() з @lru_cache –\nодин екземпляр на процес
+
+' ================= entities =================
+class User $domain {
+  +email: str
+  +password_hash: str
+  +role: Role
+  +is_active: bool
+}
+class Patient $domain {
+  +last_name, first_name, middle_name: str
+  +phone: str
+  +birth_date: date
+  +notify_email: bool
+  +notify_sms: bool
+  +created_at: datetime
+  +full_name: str
+}
+class Doctor $domain {
+  +last_name, first_name, middle_name: str
+  +room: str
+  +slot_minutes: int
+  +is_active: bool
+  +full_name: str
+}
+class Specialization $domain {
+  +name: str
+  +description: str
+}
+class WorkingHours $domain {
+  +weekday: int
+  +start_time: time
+  +end_time: time
+}
+class DayOff $domain {
+  +day: date
+  +reason: str
+}
+class AppointmentStatusChange $domain {
+  +from_status: AppointmentStatus
+  +to_status: AppointmentStatus
+  +reason: str
+  +changed_at: datetime
+}
+class Notification $domain $notify {
+  +channel: email | sms
+  +kind: confirmation | reminder | cancellation
+  +send_at: datetime
+  +status: NotificationStatus
+  +attempts: int
+  +claimed_at, sent_at: datetime
+}
+class ClinicSettings $domain {
+  +reminder_email_hours_before: int
+  +reminder_sms_hours_before: int
+  +max_daily_bookings_per_patient: int
+  +booking_horizon_days: int
+  +patient_cancel_cutoff_hours: int
+}
+
+' ================= State =================
+class Appointment <<Context>> $domain $booking $C_STATE {
+  +starts_at, ends_at: datetime
+  +status: AppointmentStatus
+  +reason, doctor_notes: str
+  --
+  +{static} book(patient, doctor, starts_at, reason, actor, now)
+  +state: AppointmentState
+  +confirm(ctx)
+  +cancel(ctx, reason)
+  +complete(ctx, notes)
+  +mark_no_show(ctx)
+  +reschedule(ctx, starts_at)
+  ~transition_to(status, ctx, reason)
+  ~move_to(starts_at, ends_at, ctx)
+  +pull_events(): list[DomainEvent]
+}
+abstract class AppointmentState <<State>> $domain $booking $C_STATE {
+  +confirm(appt, ctx)
+  +cancel(appt, ctx, reason)
+  +complete(appt, ctx, notes)
+  +mark_no_show(appt, ctx)
+  +reschedule(appt, ctx, starts_at, ends_at)
+}
+abstract class _ActiveState $domain $booking $C_STATE {
+  +cancel(): пацієнт – до дедлайну
+  +complete(): лише після початку
+  +reschedule(): знову «заплановано»
+}
+class ScheduledState $domain $booking $C_STATE {
+  +confirm(appt, ctx)
+}
+class ConfirmedState $domain $booking $C_STATE
+class CompletedState $domain $booking $C_STATE
+class CancelledState $domain $booking $C_STATE
+class NoShowState $domain $booking $C_STATE
+class TransitionContext <<dataclass>> $domain $booking {
+  +actor: User
+  +now: datetime
+  +patient_cancel_cutoff_hours: int
+}
+
+' ================= domain events =================
+class AppointmentBooked <<event>> $booking
+class AppointmentStatusChanged <<event>> $booking {
+  +old, new: AppointmentStatus
+}
+class AppointmentRescheduled <<event>> $booking {
+  +old_starts_at: datetime
+}
+
+' ================= Facade =================
+class BookingFacade <<Facade>> $booking $C_FACADE {
+  +available_slots(doctor_id, day)
+  +next_free_slots(specialization_id)
+  +book(actor, doctor_id, starts_at, reason, patient_id)
+  +reschedule(actor, appointment_id, starts_at)
+  +cancel(actor, appointment_id, reason)
+  +confirm(actor, appointment_id)
+  +complete(actor, appointment_id, notes)
+  +mark_no_show(actor, appointment_id)
+  +cancel_doctor_day(actor, doctor, day, reason)
+  -_flush_and_publish(appointments)
+}
+class AvailabilityCalendar <<GRASP Expert>> $booking {
+  +grid(doctor, day): list[datetime]
+  +free_slots(doctor, day, now)
+  +next_free(doctor, now, days)
+  +is_day_off(doctor, day): bool
+  +day_bounds(day)
+}
+
+' ================= Chain of Responsibility =================
+class BookingRequest <<dataclass>> $booking {
+  +doctor, patient
+  +starts_at, now: datetime
+  +settings: ClinicSettings
+  +exclude_id: int
+}
+abstract class BookingRule <<Handler>> $booking $C_CHAIN {
+  -_next: BookingRule
+  +then(next): BookingRule
+  +check(request)
+  #{abstract} validate(request)
+}
+class DoctorIsActive $booking $C_CHAIN
+class NotInPast $booking $C_CHAIN
+class WithinHorizon $booking $C_CHAIN
+class NotOnDayOff $booking $C_CHAIN
+class WithinWorkingHours $booking $C_CHAIN
+class SlotAligned $booking $C_CHAIN
+class SlotFree $booking $C_CHAIN
+class PatientNoOverlap $booking $C_CHAIN
+class PatientDailyLimit $booking $C_CHAIN
+
+' ================= Observer =================
+class EventBus <<Subject>> $booking $C_OBSERVER {
+  -_handlers: dict[type, list[EventHandler]]
+  +subscribe(event_type, handler)
+  +unsubscribe(event_type, handler)
+  +publish(event)
+}
+interface EventHandler <<Observer>> $booking $C_OBSERVER {
+  +handle(event)
+}
+class StatusHistoryRecorder $booking $C_OBSERVER
+class ReminderScheduler <<GRASP Creator>> $booking $notify $C_OBSERVER {
+  -_schedule(appt, now)
+}
+class PendingNotificationCanceller $booking $C_OBSERVER
+
+' ================= notifications: ports =================
+interface "Sender<M>" as Sender $notify {
+  +send(message: M)
+}
+class EmailMessage <<dataclass>> $notify {
+  +to, subject, text, html: str
+}
+class SmsMessage <<dataclass>> $notify {
+  +to, text: str
+}
+
+' ================= Adapter =================
+class SmtpEmailAdapter <<Adapter>> $notify $C_ADAPTER {
+  +send(message: EmailMessage)
+}
+class TwilioSmsAdapter <<Adapter>> $notify $C_ADAPTER {
+  +send(message: SmsMessage)
+}
+class "smtplib.SMTP" as SMTP <<external>> $notify $C_EXTERNAL {
+  +starttls() / login() / send_message()
+}
+class "twilio.rest.Client" as TwilioClient <<external>> $notify $C_EXTERNAL {
+  +messages.create(to, from_, body)
+}
+class ConsoleEmailSender $notify
+class ConsoleSmsSender $notify
+
+' ================= Decorator =================
+class SenderDecorator <<Decorator>> $notify $C_DECORATOR {
+  #inner: Sender<M>
+  +send(message)
+}
+class RetryingSender $notify $C_DECORATOR {
+  +attempts: int
+  +send(message)
+}
+class LoggingSender $notify $C_DECORATOR {
+  +send(message)
+}
+
+' ================= Abstract Factory =================
+abstract class TransportFactory <<AbstractFactory>> $notify $C_FACTORY {
+  +{abstract} create_email_sender(): Sender<EmailMessage>
+  +{abstract} create_sms_sender(): Sender<SmsMessage>
+}
+class ConsoleTransportFactory $notify $C_FACTORY
+class LiveTransportFactory $notify $C_FACTORY
+note bottom of TransportFactory : get_transport_factory() з @lru_cache –\nконкретна фабрика теж Singleton
+
+' ================= Builder =================
+class MessageComposer <<Director>> $notify $C_BUILDER {
+  +compose(kind, appointment, builder)
+}
+abstract class MessageBuilder <<Builder>> $notify $C_BUILDER {
+  +{abstract} set_recipient(patient)
+  +{abstract} set_title(title)
+  +add_greeting()
+  +add_paragraph(text)
+  +{abstract} add_visit(appointment)
+  +add_link(label, url)
+  +add_signature(clinic)
+}
+class EmailMessageBuilder $notify $C_BUILDER {
+  +get_result(): EmailMessage
+}
+class SmsMessageBuilder $notify $C_BUILDER {
+  +get_result(): SmsMessage
+}
+
+' ================= worker =================
+class NotificationDispatcher <<Outbox relay>> $notify {
+  +process_due(): Counter
+  -_claim(): list[int]
+  -_deliver(id)
+  -_skip_reason(notification, now)
+}
+
+' ================= Strategy =================
+abstract class Grouping <<Strategy>> $reports $C_STRATEGY {
+  +{abstract} key(fact)
+  +{abstract} label(key, ctx): str
+  +{abstract} buckets(ctx): list
+}
+class GroupByDay $reports $C_STRATEGY
+class GroupByMonth $reports $C_STRATEGY
+class GroupByDoctor $reports $C_STRATEGY
+class Fact <<dataclass>> $reports {
+  +day: date
+  +doctor_id: int
+  +values: dict[str, float]
+}
+
+' ================= Template Method =================
+abstract class BaseReport <<AbstractClass>> $reports $C_TEMPLATE {
+  +columns: list[Column]
+  +supported_groupings
+  +generate(ctx, grouping): ReportResult  {final}
+  #{abstract} collect(ctx): list[Fact]
+  #aggregate(facts, ctx, grouping)
+  #postprocess(rows, totals)  <<hook>>
+  #present(rows, totals, grouping)
+}
+class AppointmentsCountReport $reports $C_TEMPLATE {
+  #collect(ctx)
+}
+class DoctorLoadReport $reports $C_TEMPLATE {
+  #collect(ctx)
+  #postprocess(rows, totals)
+}
+class NewPatientsReport $reports $C_TEMPLATE {
+  #collect(ctx)
+  #postprocess(rows, totals)
+}
+class ReportResult <<dataclass>> $reports {
+  +columns, rows, totals
+}
+
+' ================= repositories (PoEAA, not GoF) =================
+class "Repository<T>" as Repository <<Repository>> $booking $C_INFRA {
+  +get(id) / add(entity) / delete(entity)
+}
+class AppointmentRepository $booking $C_INFRA
+class NotificationRepository $booking $notify $C_INFRA
+class ClinicSettingsRepository $booking $C_INFRA
+class ReportRepository $reports $C_INFRA
+
+' ================= relationships =================
+User "1" -- "0..1" Patient
+User "1" -- "0..1" Doctor
+Specialization "1" -- "*" Doctor
+Doctor "1" *-- "*" WorkingHours
+Doctor "1" *-- "*" DayOff
+Patient "1" -- "*" Appointment
+Doctor "1" -- "*" Appointment
+Appointment "1" *-- "*" AppointmentStatusChange : history
+Appointment "1" *-- "*" Notification : outbox
+
+Appointment --> AppointmentState : state
+AppointmentState <|-- _ActiveState
+_ActiveState <|-- ScheduledState
+_ActiveState <|-- ConfirmedState
+AppointmentState <|-- CompletedState
+AppointmentState <|-- CancelledState
+AppointmentState <|-- NoShowState
+AppointmentState ..> TransitionContext
+Appointment ..> AppointmentBooked : records
+Appointment ..> AppointmentStatusChanged : records
+Appointment ..> AppointmentRescheduled : records
+
+BookingFacade --> BookingRule : validates via chain
+BookingFacade --> AvailabilityCalendar
+BookingFacade --> EventBus : publishes events
+BookingFacade --> AppointmentRepository
+BookingFacade ..> Appointment : drives
+BookingRule --> BookingRule : _next
+BookingRule ..> BookingRequest
+BookingRule <|-- DoctorIsActive
+BookingRule <|-- NotInPast
+BookingRule <|-- WithinHorizon
+BookingRule <|-- NotOnDayOff
+BookingRule <|-- WithinWorkingHours
+BookingRule <|-- SlotAligned
+BookingRule <|-- SlotFree
+BookingRule <|-- PatientNoOverlap
+BookingRule <|-- PatientDailyLimit
+SlotFree --> AvailabilityCalendar
+AvailabilityCalendar --> AppointmentRepository
+
+EventBus o-- "*" EventHandler
+EventHandler <|.. StatusHistoryRecorder
+EventHandler <|.. ReminderScheduler
+EventHandler <|.. PendingNotificationCanceller
+StatusHistoryRecorder ..> AppointmentStatusChange : creates
+ReminderScheduler ..> Notification : creates
+ReminderScheduler --> ClinicSettingsRepository
+ReminderScheduler --> NotificationRepository
+PendingNotificationCanceller --> NotificationRepository
+
+Repository <|-- AppointmentRepository
+Repository <|-- NotificationRepository
+Repository <|-- ClinicSettingsRepository
+ClinicSettingsRepository ..> ClinicSettings
+
+Sender <|.. SmtpEmailAdapter
+Sender <|.. TwilioSmsAdapter
+Sender <|.. ConsoleEmailSender
+Sender <|.. ConsoleSmsSender
+Sender <|.. SenderDecorator
+SenderDecorator o--> Sender : inner
+SenderDecorator <|-- RetryingSender
+SenderDecorator <|-- LoggingSender
+SmtpEmailAdapter --> SMTP : adapts
+TwilioSmsAdapter --> TwilioClient : adapts
+SmtpEmailAdapter ..> EmailMessage
+TwilioSmsAdapter ..> SmsMessage
+
+TransportFactory <|-- ConsoleTransportFactory
+TransportFactory <|-- LiveTransportFactory
+ConsoleTransportFactory ..> ConsoleEmailSender : creates
+ConsoleTransportFactory ..> ConsoleSmsSender : creates
+LiveTransportFactory ..> SmtpEmailAdapter : creates
+LiveTransportFactory ..> TwilioSmsAdapter : creates
+LiveTransportFactory ..> RetryingSender : wraps
+TransportFactory ..> LoggingSender : wraps
+LiveTransportFactory --> Settings
+
+MessageComposer --> MessageBuilder : directs
+MessageBuilder <|-- EmailMessageBuilder
+MessageBuilder <|-- SmsMessageBuilder
+EmailMessageBuilder ..> EmailMessage : builds
+SmsMessageBuilder ..> SmsMessage : builds
+
+NotificationDispatcher --> TransportFactory : gets senders
+NotificationDispatcher --> "2" Sender
+NotificationDispatcher --> MessageComposer
+NotificationDispatcher ..> MessageBuilder : picks per channel
+NotificationDispatcher ..> Notification : claims, marks sent
+
+BaseReport ..> Grouping : uses
+BaseReport --> ReportRepository
+BaseReport ..> Fact
+BaseReport ..> ReportResult
+Grouping <|-- GroupByDay
+Grouping <|-- GroupByMonth
+Grouping <|-- GroupByDoctor
+Grouping ..> Fact
+BaseReport <|-- AppointmentsCountReport
+BaseReport <|-- DoctorLoadReport
+BaseReport <|-- NewPatientsReport
+DoctorLoadReport ..> AvailabilityCalendar : capacity

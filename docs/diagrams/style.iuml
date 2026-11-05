@@ -1,0 +1,32 @@
+' Shared look for every MedBook diagram.
+' GoF pattern colours (the same in all class diagrams and in the legend).
+' Factory, Singleton, Template Method, Observer and Builder follow the
+' colour scheme of the coursework instruction (Appendix B).
+!$C_SINGLETON = "#F8BBD0"
+!$C_FACTORY = "#D7B899"
+!$C_BUILDER = "#FFCC80"
+!$C_ADAPTER = "#B2EBF2"
+!$C_DECORATOR = "#D1C4E9"
+!$C_FACADE = "#EF9A9A"
+!$C_OBSERVER = "#C5E1A5"
+!$C_STATE = "#BBDEFB"
+!$C_STRATEGY = "#80CBC4"
+!$C_TEMPLATE = "#FFF59D"
+!$C_CHAIN = "#CDDC39"
+!$C_PLAIN = "#FFFFFF"
+!$C_INFRA = "#ECEFF1"
+!$C_EXTERNAL = "#E0E0E0"
+
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ArrowColor #37474F
+skinparam ClassBorderColor #455A64
+skinparam ClassBackgroundColor $C_PLAIN
+skinparam PackageBorderColor #90A4AE
+skinparam PackageFontStyle bold
+skinparam ClassAttributeIconSize 0
+skinparam linetype ortho
+hide empty members
+hide circle

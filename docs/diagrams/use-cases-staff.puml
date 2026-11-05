@@ -1,0 +1,61 @@
+@startuml use-cases-staff
+' Use cases of clinic staff: doctors and administrators (reception).
+!include style.iuml
+skinparam linetype polyline
+left to right direction
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #455A64
+}
+
+actor "Лікар" as Doctor
+actor "Адміністратор" as Admin
+
+rectangle "MedBook – кабінети персоналу" {
+  usecase "Увійти в систему" as UC_Login
+  usecase "Переглянути розклад\nна тиждень" as UC_Schedule
+  usecase "Підтвердити прийом" as UC_Confirm
+  usecase "Завершити прийом\nз висновком" as UC_Complete
+  usecase "Позначити неявку" as UC_NoShow
+  usecase "Переглянути історію\nприйомів" as UC_History
+
+  usecase "Записати пацієнта\nна прийом" as UC_AdminBook
+  usecase "Перенести або скасувати\nприйом" as UC_Manage
+  usecase "Керувати лікарями\nі спеціалізаціями" as UC_Doctors
+  usecase "Налаштувати графік\nроботи лікаря" as UC_Hours
+  usecase "Додати вихідний\nлікаря" as UC_DayOff
+  usecase "Скасувати записи\nна вихідний день" as UC_CancelDay
+  usecase "Керувати пацієнтами" as UC_Patients
+  usecase "Змінити налаштування\nклініки" as UC_Settings
+  usecase "Переглянути журнал\nнагадувань" as UC_Log
+  usecase "Сформувати звіти" as UC_Reports
+  usecase "Кількість прийомів за\nдень / місяць / лікаря" as UC_R1
+  usecase "Завантаженість\nлікарів" as UC_R2
+  usecase "Динаміка нових\nпацієнтів" as UC_R3
+}
+
+Doctor --> UC_Login
+Doctor --> UC_Schedule
+Doctor --> UC_Confirm
+Doctor --> UC_Complete
+Doctor --> UC_NoShow
+Doctor --> UC_History
+
+Admin --> UC_Login
+Admin --> UC_Confirm
+Admin --> UC_AdminBook
+Admin --> UC_Manage
+Admin --> UC_Doctors
+Admin --> UC_Hours
+Admin --> UC_DayOff
+Admin --> UC_Patients
+Admin --> UC_Settings
+Admin --> UC_Log
+Admin --> UC_Reports
+
+UC_CancelDay .> UC_DayOff : <<extend>>
+UC_Reports ..> UC_R1 : <<include>>
+UC_Reports ..> UC_R2 : <<include>>
+UC_Reports ..> UC_R3 : <<include>>
+@enduml

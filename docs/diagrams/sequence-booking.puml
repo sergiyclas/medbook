@@ -1,0 +1,53 @@
+@startuml sequence-booking
+' A patient books a visit: Facade -> Chain of Responsibility -> State -> Observer,
+' all inside one database transaction.
+!include style.iuml
+skinparam linetype polyline
+skinparam sequenceMessageAlign center
+autonumber
+
+actor "Пацієнт" as P
+participant "React SPA" as UI
+participant "POST /appointments\n(FastAPI router)" as API
+participant "BookingFacade" as F $C_FACADE
+participant "BookingRule\n(ланцюжок)" as Chain $C_CHAIN
+participant "Appointment" as A $C_STATE
+participant "Session\n(Unit of Work)" as S $C_INFRA
+participant "EventBus" as Bus $C_OBSERVER
+participant "StatusHistoryRecorder" as H $C_OBSERVER
+participant "ReminderScheduler" as R $C_OBSERVER
+database "PostgreSQL" as DB
+
+P -> UI : обирає лікаря, день і слот
+UI -> API : {doctor_id, starts_at, reason}
+API -> F : book(actor, doctor_id, starts_at, reason)
+F -> Chain : check(BookingRequest)
+note right of Chain
+  DoctorIsActive → NotInPast → WithinHorizon →
+  NotOnDayOff → WithinWorkingHours → SlotAligned →
+  SlotFree → PatientNoOverlap → PatientDailyLimit
+end note
+alt правило порушено
+  Chain --> F : BookingRejected / SlotTaken
+  F --> API : виняток
+  API --> UI : 422 / 409 {detail, code}
+else усі правила пройдено
+  F -> A : Appointment.book(...)
+  A -> A : status = SCHEDULED,\nrecord(AppointmentBooked)
+  F -> S : add(appointment)
+  F -> S : flush()
+  S -> DB : INSERT appointments
+  note right of DB : частковий unique-індекс\n(doctor_id, starts_at) ловить гонку → 409
+  F -> A : pull_events()
+  F -> Bus : publish(AppointmentBooked)
+  Bus -> H : handle(event)
+  H -> S : + AppointmentStatusChange
+  Bus -> R : handle(event)
+  R -> S : + Notification ×3\n(підтвердження, e-mail і SMS-нагадування)
+  F -> S : commit()
+  S -> DB : INSERT … COMMIT (одна транзакція)
+  F --> API : appointment
+  API --> UI : 201 AppointmentOut
+  UI --> P : талон із печаткою «Записано»
+end
+@enduml

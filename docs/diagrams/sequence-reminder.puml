@@ -1,0 +1,52 @@
+@startuml sequence-reminder
+' The worker delivers a due reminder: transactional outbox relay using
+' Abstract Factory (+ Singleton), Builder, Decorator and Adapter.
+!include style.iuml
+skinparam linetype polyline
+skinparam sequenceMessageAlign center
+autonumber
+
+participant "worker\n(цикл кожні 15 с)" as W
+participant "NotificationDispatcher" as D
+database "PostgreSQL" as DB
+participant "MessageComposer\n(Director)" as C $C_BUILDER
+participant "SmsMessageBuilder" as B $C_BUILDER
+participant "LoggingSender" as L $C_DECORATOR
+participant "RetryingSender" as RS $C_DECORATOR
+participant "TwilioSmsAdapter" as T $C_ADAPTER
+participant "twilio.rest.Client" as TC $C_EXTERNAL
+
+== старт процесу ==
+W -> D : build_dispatcher()
+D -> D : get_transport_factory()\n→ LiveTransportFactory (Singleton)
+D -> D : create_sms_sender() →\nLogging(Retrying(TwilioSmsAdapter))
+
+== кожен цикл ==
+W -> D : process_due()
+D -> DB : SELECT … WHERE status = pending\nAND send_at <= now FOR UPDATE SKIP LOCKED
+D -> DB : status = sending, attempts += 1; COMMIT
+loop для кожного взятого повідомлення
+  D -> D : _skip_reason()?\n(прийом скасовано, канал вимкнено, вже почався)
+  alt актуальне
+    D -> C : compose(REMINDER, appointment, builder)
+    C -> B : set_recipient / set_title / add_visit …
+    D -> B : get_result()
+    B --> D : SmsMessage(to, text ≤ 134 симв.)
+    D -> L : send(message)
+    L -> RS : send(message)
+    RS -> T : send(message)
+    T -> TC : messages.create(to, from_, body)
+    alt Twilio 429 / 5xx
+      TC --> T : TwilioRestException
+      T --> RS : DeliveryError(transient=True)
+      RS -> T : повтор через 1 с, 2 с
+    end
+    T --> RS : ok
+    RS --> L : ok
+    L --> D : ok (у лог – маскований номер)
+    D -> DB : status = sent, sent_at = now; COMMIT
+  else неактуальне
+    D -> DB : status = skipped; COMMIT
+  end
+end
+@enduml

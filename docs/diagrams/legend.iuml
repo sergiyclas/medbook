@@ -1,0 +1,16 @@
+legend right
+  <b>GoF-шаблони</b>
+  |<back:#F8BBD0>      </back>| Singleton |
+  |<back:#D7B899>      </back>| Abstract Factory (+ Factory Method) |
+  |<back:#FFCC80>      </back>| Builder |
+  |<back:#B2EBF2>      </back>| Adapter |
+  |<back:#D1C4E9>      </back>| Decorator |
+  |<back:#EF9A9A>      </back>| Facade |
+  |<back:#C5E1A5>      </back>| Observer |
+  |<back:#BBDEFB>      </back>| State |
+  |<back:#80CBC4>      </back>| Strategy |
+  |<back:#FFF59D>      </back>| Template Method |
+  |<back:#CDDC39>      </back>| Chain of Responsibility |
+  |<back:#ECEFF1>      </back>| Repository / інфраструктура (не GoF) |
+  |<back:#E0E0E0>      </back>| Зовнішня бібліотека |
+endlegend
