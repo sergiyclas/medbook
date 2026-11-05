@@ -53,7 +53,13 @@ def get_appointment(appointment_id: int, user: CurrentUser, booking: Booking):
 
 @router.get("/appointments/{appointment_id}/history", response_model=list[StatusChangeOut])
 def appointment_history(appointment_id: int, user: CurrentUser, booking: Booking):
-    return booking.appointment_for(user, appointment_id).history
+    history = [
+        StatusChangeOut.model_validate(change)
+        for change in booking.appointment_for(user, appointment_id).history
+    ]
+    if user.role == Role.PATIENT:
+        history = [change.model_copy(update={"changed_by_email": None}) for change in history]
+    return history
 
 
 @router.post("/appointments/{appointment_id}/cancel", response_model=AppointmentOut)

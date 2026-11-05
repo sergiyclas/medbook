@@ -24,7 +24,10 @@ def schedule(
     last = date_to or first + timedelta(days=6)
     start, _ = AvailabilityCalendar.day_bounds(first)
     _, end = AvailabilityCalendar.day_bounds(last)
-    return AppointmentRepository(session).search(doctor_id=doctor.id, start=start, end=end)
+    # Bounded by the dates; a busy week is well over the default page of 100
+    return AppointmentRepository(session).search(
+        doctor_id=doctor.id, start=start, end=end, limit=1000
+    )
 
 
 @router.get("/history", response_model=list[AppointmentOut])

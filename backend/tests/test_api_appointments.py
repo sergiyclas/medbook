@@ -178,3 +178,28 @@ def test_next_free_slot_per_doctor_skips_taken_time(client: TestClient, people) 
     after = client.get("/api/v1/doctors/next-free").json()
     assert next(s for s in after if s["doctor_id"] == people["doctor"].id)["starts_at"] > first
     assert [s["starts_at"] for s in after] == sorted(s["starts_at"] for s in after)
+
+
+def test_patient_history_names_the_role_not_the_staff_email(
+    client: TestClient, people, admin_headers
+) -> None:
+    appt_id = book(client, people["anna"], people["doctor"].id).json()["id"]
+    client.post(f"/api/v1/appointments/{appt_id}/confirm", headers=admin_headers)
+
+    patient_view = client.get(f"/api/v1/appointments/{appt_id}/history", headers=people["anna"])
+    confirmed = patient_view.json()[-1]
+    assert confirmed["changed_by_role"] == "admin"
+    assert confirmed["changed_by_email"] is None
+
+    staff_view = client.get(f"/api/v1/appointments/{appt_id}/history", headers=admin_headers)
+    assert staff_view.json()[-1]["changed_by_email"] == "admin@clinic.example"
+
+
+def test_day_off_cannot_be_added_in_the_past(client: TestClient, people, admin_headers) -> None:
+    response = client.post(
+        f"/api/v1/admin/doctors/{people['doctor'].id}/days-off",
+        json={"day": "2020-01-01"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "day_in_past"

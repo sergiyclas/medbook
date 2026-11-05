@@ -1,3 +1,4 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.security import hash_password, verify_password
@@ -22,10 +23,14 @@ class AccountService:
         user = User(
             email=data.email.lower(), password_hash=hash_password(data.password), role=Role.PATIENT
         )
-        patient = self.patients.add(
-            Patient(user=user, **data.model_dump(exclude={"email", "password"}))
-        )
-        self.session.commit()
+        patient = Patient(user=user, **data.model_dump(exclude={"email", "password"}))
+        # The e-mail check above can race with a parallel request; the unique index decides
+        try:
+            self.patients.add(patient)
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            raise Conflict("Користувач з таким e-mail уже зареєстрований", "email_taken") from None
         return patient
 
     def authenticate(self, email: str, password: str) -> User | None:

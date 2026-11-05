@@ -154,3 +154,7 @@ class AppointmentStatusChange(Base):
     @property
     def changed_by_email(self) -> str | None:
         return self.changed_by.email if self.changed_by else None
+
+    @property
+    def changed_by_role(self) -> str | None:
+        return self.changed_by.role.value if self.changed_by else None

@@ -1,9 +1,10 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.clock import utc_now
+from app.core.clock import local_today, utc_now
 from app.core.security import hash_password
 from app.domain.enums import NotificationStatus, Role
-from app.domain.errors import Conflict, NotFound
+from app.domain.errors import Conflict, InvalidData, NotFound
 from app.models import (
     Appointment,
     ClinicSettings,
@@ -89,8 +90,7 @@ class AdminService:
             working_hours=_hours(data.working_hours),
             **data.model_dump(exclude={"email", "password", "working_hours"}),
         )
-        self.doctors.add(doctor)
-        self.session.commit()
+        self._commit_new_account(lambda: self.doctors.add(doctor))
         return doctor
 
     def update_doctor(self, doctor_id: int, data: DoctorUpdate) -> Doctor:
@@ -122,6 +122,8 @@ class AdminService:
         self, actor: User, doctor_id: int, data: DayOffIn, booking: BookingFacade
     ) -> tuple[DayOff, list[Appointment]]:
         doctor = self.doctor(doctor_id)
+        if data.day < local_today():
+            raise InvalidData("Вихідний можна додати лише на сьогодні або пізніше", "day_in_past")
         if any(d.day == data.day for d in doctor.days_off):
             raise Conflict("Цей день уже позначено як вихідний")
         day_off = self.days_off.add(DayOff(doctor=doctor, **data.model_dump()))
@@ -175,6 +177,15 @@ class AdminService:
         _apply(settings, data.model_dump(exclude_unset=True, exclude_none=True))
         self.session.commit()
         return settings
+
+    # The e-mail check can race with a parallel request; the unique index decides
+    def _commit_new_account(self, add) -> None:
+        try:
+            add()
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            raise Conflict("Користувач з таким e-mail уже зареєстрований", "email_taken") from None
 
     def _specialization(self, spec_id: int) -> Specialization:
         spec = self.specializations.get(spec_id)

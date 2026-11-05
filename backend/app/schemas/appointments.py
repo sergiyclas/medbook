@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from app.domain.enums import AppointmentStatus
+from app.domain.enums import AppointmentStatus, Role
 from app.schemas.doctors import SpecializationOut
 
 
@@ -76,4 +76,6 @@ class StatusChangeOut(BaseModel):
     to_status: AppointmentStatus
     reason: str | None
     changed_at: datetime
+    changed_by_role: Role | None
+    # Staff only: patients do not see the login e-mails of clinic employees
     changed_by_email: str | None
