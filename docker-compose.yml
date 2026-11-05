@@ -17,16 +17,33 @@ services:
 
   backend:
     build: ./backend
-    env_file:
+    env_file: &env
       - path: .env
         required: false
-    environment:
+    environment: &db_url
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-medbook}:${POSTGRES_PASSWORD:-medbook}@db:5432/${POSTGRES_DB:-medbook}
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Delivers queued e-mail/SMS. Starts once the backend is healthy, i.e. after
+  # migrations have run.
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker"]
+    env_file: *env
+    environment: *db_url
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

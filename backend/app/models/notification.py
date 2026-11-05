@@ -46,6 +46,9 @@ class Notification(Base):
     )
     attempts: Mapped[int] = mapped_column(default=0)
     last_error: Mapped[str | None] = mapped_column(String(500))
+    # When the worker took the row; a row stuck in "sending" (worker crashed
+    # mid-delivery) is released after a while, so delivery is at-least-once
+    claimed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utc_now)
 
