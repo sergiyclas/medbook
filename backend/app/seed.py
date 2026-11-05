@@ -8,7 +8,7 @@ import random
 from datetime import date, datetime, time, timedelta
 
 from faker import Faker
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.clock import local_today, to_local, utc_now
@@ -87,8 +87,19 @@ PHONE_PREFIXES = ["50", "63", "66", "67", "68", "73", "93", "95", "96", "97", "9
 
 def _names(fake: Faker, rnd: random.Random) -> tuple[str, str, str]:
     if rnd.random() < 0.5:
-        return fake.last_name_male(), fake.first_name_male(), fake.middle_name_male()
-    return fake.last_name_female(), fake.first_name_female(), fake.middle_name_female()
+        names = fake.last_name_male(), fake.first_name_male(), fake.middle_name_male()
+    else:
+        names = fake.last_name_female(), fake.first_name_female(), fake.middle_name_female()
+    # Faker spells the apostrophe as U+02BC, which most UI fonts space out
+    return tuple(n.replace("\u02bc", "\u2019") for n in names)  # type: ignore[return-value]
+
+
+def _years(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} рік"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return f"{n} роки"
+    return f"{n} років"
 
 
 def _phone(rnd: random.Random) -> str:
@@ -101,8 +112,14 @@ def _user(email: str, password: str, role: Role, created_at: datetime) -> User:
     )
 
 
+# Restarting ids keeps demo links like /doctors/1 stable between reseeds
 def _wipe(session: Session) -> None:
-    for table in reversed(Base.metadata.sorted_tables):
+    tables = Base.metadata.sorted_tables
+    if session.get_bind().dialect.name == "postgresql":
+        names = ", ".join(t.name for t in tables)
+        session.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+        return
+    for table in reversed(tables):
         session.execute(table.delete())
 
 
@@ -127,7 +144,7 @@ def _create_doctors(
             first_name=first,
             middle_name=middle,
             room=str(100 + i * 3),
-            bio=f"{SPECIALIZATIONS[spec_index][0]}, стаж {rnd.randint(4, 30)} років.",
+            bio=f"{SPECIALIZATIONS[spec_index][0]}, стаж {_years(rnd.randint(4, 30))}.",
             slot_minutes=SPECIALIZATIONS[spec_index][2],
         )
         for weekday, intervals in schedule.items():
