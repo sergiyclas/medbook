@@ -163,3 +163,31 @@ def test_row_stuck_in_sending_is_released(session, setup) -> None:
     assert dispatcher.process_due() == {}
     clock.now += timedelta(minutes=11)
     assert dispatcher.process_due() == {N.SENT: 1}
+
+
+def test_unexpected_error_fails_one_message_and_the_batch_goes_on(session, setup) -> None:
+    facade, patient, doctor, transports, dispatcher, clock = setup
+    facade.book(patient.user, doctor.id, SLOT)
+    other = make_patient(session, notify_email=False)  # gets an SMS confirmation
+    session.commit()
+    facade.book(other.user, doctor.id, SLOT + timedelta(hours=1))
+
+    def broken(message):
+        raise ValueError("bad header")
+
+    transports.email.send = broken
+    assert dispatcher.process_due() == {N.FAILED: 1, N.SENT: 1}
+    row = confirmation(session)
+    assert row.last_error == "ValueError: bad header"
+
+
+def test_message_reclaimed_by_another_worker_is_not_sent_twice(session, setup) -> None:
+    facade, patient, doctor, transports, dispatcher, clock = setup
+    facade.book(patient.user, doctor.id, SLOT)
+    claimed_at, ids = dispatcher._claim()
+    # meanwhile the row went stale and another worker took it over
+    row = confirmation(session)
+    row.claimed_at = claimed_at + timedelta(minutes=11)
+    session.commit()
+    assert dispatcher._deliver(ids[0], claimed_at) is None
+    assert transports.email.sent == []

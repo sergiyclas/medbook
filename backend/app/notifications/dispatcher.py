@@ -1,3 +1,4 @@
+import logging
 from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -20,6 +21,8 @@ from app.notifications.messages import (
     SmsMessageBuilder,
 )
 from app.notifications.ports import DeliveryError
+
+log = logging.getLogger("medbook.worker")
 
 STALE_AFTER = timedelta(minutes=10)
 # Delay before the next try after a temporary failure: 1, 5, 15, 60 minutes
@@ -54,8 +57,11 @@ class NotificationDispatcher:
     def process_due(self) -> Counter[NotificationStatus]:
         self._release_stale()
         results: Counter[NotificationStatus] = Counter()
-        for notification_id in self._claim():
-            results[self._deliver(notification_id)] += 1
+        claimed_at, ids = self._claim()
+        for notification_id in ids:
+            status = self._deliver(notification_id, claimed_at)
+            if status is not None:
+                results[status] += 1
         return results
 
     # Stuck rows go back to the queue; the patient may get a duplicate, never nothing
@@ -73,7 +79,7 @@ class NotificationDispatcher:
 
     # SKIP LOCKED lets several workers run side by side without taking the
     # same rows (PostgreSQL; SQLite has no row locks and ignores the clause)
-    def _claim(self) -> list[int]:
+    def _claim(self) -> tuple[datetime, list[int]]:
         now = self.clock()
         with self.session_factory() as session:
             due = session.scalars(
@@ -91,19 +97,33 @@ class NotificationDispatcher:
                 notification.claimed_at = now
                 notification.attempts += 1
             session.commit()
-            return [n.id for n in due]
+            return now, [n.id for n in due]
 
-    def _deliver(self, notification_id: int) -> NotificationStatus:
+    # claimed_at works as an ownership token: if a slow batch outlived STALE_AFTER
+    # and another worker re-claimed the row, this worker must not send it as well
+    def _deliver(self, notification_id: int, claimed_at: datetime) -> NotificationStatus | None:
         with self.session_factory() as session:
             notification = session.get(Notification, notification_id)
             assert notification is not None
+            if (
+                notification.status != NotificationStatus.SENDING
+                or notification.claimed_at != claimed_at
+            ):
+                return None
             now = self.clock()
             reason = self._skip_reason(notification, now)
             if reason:
                 notification.status = NotificationStatus.SKIPPED
                 notification.last_error = reason
             else:
-                self._send(notification, now)
+                try:
+                    self._send(notification, now)
+                except Exception as exc:
+                    # System boundary: a broken template or a library bug fails this
+                    # one message instead of stalling the rest of the outbox
+                    log.exception("notification %s failed", notification_id)
+                    notification.status = NotificationStatus.FAILED
+                    notification.last_error = f"{type(exc).__name__}: {exc}"[:500]
             session.commit()
             return notification.status
 
