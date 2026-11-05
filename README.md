@@ -158,7 +158,7 @@ Configuration is read from `.env` in the repository root (see `.env.example`);
 
 ```bash
 cd backend
-uv run pytest          # 109 tests: domain, rules, events, notifications, reports, API
+uv run pytest          # 116 tests: domain, rules, events, notifications, reports, API
 uv run ruff check . && uv run ruff format --check .
 
 cd ../frontend
