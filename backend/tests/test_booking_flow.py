@@ -10,10 +10,11 @@ from app.domain.enums import NotificationChannel as Ch
 from app.domain.enums import NotificationKind as K
 from app.domain.enums import NotificationStatus as N
 from app.domain.enums import Role
+from app.domain.errors import DomainError
 from app.services import booking_facade
 from app.services.booking_facade import BookingFacade
 from app.services.booking_rules import SlotTaken
-from tests.factories import make_doctor, make_patient, make_user
+from tests.factories import make_appointment, make_doctor, make_patient, make_user
 
 NOW = datetime(2026, 11, 16, 6, 0, tzinfo=UTC)  # Monday 08:00 in Kyiv
 WEDNESDAY = date(2026, 11, 18)
@@ -129,3 +130,36 @@ def test_free_slots_exclude_taken_and_past_ones(session, facade) -> None:
     assert len(slots) == 13  # 14 half-hour slots in 09–13 and 14–17, one taken
     today_slots = facade.available_slots(doctor.id, date(2026, 11, 16))
     assert all(s > NOW for s, _ in today_slots)
+
+
+def test_slots_beyond_the_booking_horizon_are_not_offered(session, facade) -> None:
+    doctor = make_doctor(session)
+    far_wednesday = WEDNESDAY + timedelta(days=42)  # default horizon is 30 days
+    assert facade.available_slots(doctor.id, far_wednesday) == []
+
+
+def test_reschedule_checks_the_state_first_and_rejects_the_same_time(session, facade) -> None:
+    patient, doctor = make_patient(session), make_doctor(session)
+    appt = facade.book(patient.user, doctor.id, SLOT)
+    with pytest.raises(DomainError) as same:
+        facade.reschedule(patient.user, appt.id, SLOT)
+    assert same.value.code == "same_time"
+
+    facade.cancel(patient.user, appt.id)
+    with pytest.raises(DomainError) as final:
+        facade.reschedule(patient.user, appt.id, NOW - timedelta(days=1))
+    assert final.value.code == "invalid_transition"
+
+
+def test_day_off_today_leaves_visits_that_already_started(session) -> None:
+    doctor, admin = make_doctor(session), make_user(session, Role.ADMIN)
+    monday = date(2026, 11, 16)
+    started = make_appointment(
+        session, make_patient(session), doctor, local_to_utc(monday, time(9))
+    )
+    later = make_appointment(session, make_patient(session), doctor, local_to_utc(monday, time(15)))
+    at_ten = BookingFacade(
+        session, build_bus(session), clock=lambda: local_to_utc(monday, time(10))
+    )
+    assert at_ten.cancel_doctor_day(admin, doctor, monday, "Лікар захворів") == [later]
+    assert started.status == S.SCHEDULED

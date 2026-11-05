@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
@@ -21,6 +22,8 @@ from app.services.booking_rules import (
     build_patient_chain,
 )
 from app.services.event_bus import EventBus
+
+log = logging.getLogger("medbook.booking")
 
 
 # GoF Facade (and GRASP Controller) for everything that changes an appointment.
@@ -46,8 +49,11 @@ class BookingFacade:
         doctor = self._doctor(doctor_id)
         if not doctor.is_active:
             return []
+        now = self.clock()
+        # Same limit as the WithinHorizon rule: never offer a slot that cannot be booked online
+        last = now + timedelta(days=self.settings.current().booking_horizon_days)
         step = timedelta(minutes=doctor.slot_minutes)
-        return [(s, s + step) for s in self.calendar.free_slots(doctor, day, self.clock())]
+        return [(s, s + step) for s in self.calendar.free_slots(doctor, day, now) if s <= last]
 
     # Nearest free time per active doctor, within the online booking horizon
     def next_free_slots(self, specialization_id: int | None) -> list[tuple[Doctor, datetime]]:
@@ -86,6 +92,10 @@ class BookingFacade:
 
     def reschedule(self, actor: User, appointment_id: int, starts_at: datetime) -> Appointment:
         appt = self.appointment_for(actor, appointment_id)
+        if not appt.state.is_active:
+            appt.reschedule(self._ctx(actor), starts_at)  # final states refuse here
+        if starts_at == appt.starts_at:
+            raise InvalidData("Прийом уже призначено на цей час", "same_time")
         now = self.clock()
         self._chain_for(actor).check(
             BookingRequest(
@@ -123,7 +133,12 @@ class BookingFacade:
     ) -> list[Appointment]:
         start, end = self.calendar.day_bounds(day)
         ctx = self._ctx(actor)
-        cancelled = self.appointments.doctor_active_between(doctor.id, start, end)
+        # Visits that already began are left for the doctor to close
+        cancelled = [
+            a
+            for a in self.appointments.doctor_active_between(doctor.id, start, end)
+            if a.starts_at > ctx.now
+        ]
         for appt in cancelled:
             appt.cancel(ctx, reason)
         self._flush_and_publish(cancelled)
@@ -142,6 +157,8 @@ class BookingFacade:
         try:
             self.session.flush()
         except IntegrityError:
+            # The only constraint a valid booking can hit is the active-slot index
+            log.warning("booking flush rejected by a constraint", exc_info=True)
             self.session.rollback()
             raise SlotTaken("Цей час щойно зайняли – оберіть інший слот") from None
         for appt in appointments:
