@@ -125,6 +125,11 @@ then `docker compose up -d --build backend worker`.
 - **Twilio:** a trial account sends SMS only to phone numbers verified in the console
   and prefixes messages with a trial notice. For Ukrainian numbers, allow Ukraine under
   *Messaging → Settings → Geo permissions*.
+  Newer trial accounts go further and only send Twilio's predefined templates: an SMS
+  with MedBook's own text is rejected with
+  [error 572006](https://www.twilio.com/docs/api/errors/572006), so real SMS needs an
+  upgraded account. E-mail is unaffected; the rejected SMS shows up as failed in the
+  admin notification log and is not retried.
 - Live mode refuses to start unless **both** channels are configured, so a
   half-configured setup is never mistaken for a working one.
 - To try it, register yourself as a patient with your own e-mail and phone and book a visit.
