@@ -21,6 +21,7 @@ MAIL = EmailMessage("olena@clinic.example", "Тема", "Текст", "<p>Тек
 SMS = SmsMessage("+380671234567", "Нагадування")
 
 LIVE = dict(
+    _env_file=None,  # a developer's real .env must not leak into these values
     notification_mode="live",
     smtp_username="clinic@gmail.example",
     smtp_password=SecretStr("app-password"),
